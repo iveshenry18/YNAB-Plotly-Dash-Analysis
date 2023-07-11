@@ -3,14 +3,14 @@ import io
 import dash
 from dash import dcc, html
 import dash_bootstrap_components as dbc
-from dash.dependencies import Input, Output
+from dash.dependencies import Input, Output, State
 from dash import dash_table
 import plotly.graph_objects as go
 import plotly.express as px
 import pandas as pd
 import numpy as np
 
-app = dash.Dash(__name__, external_stylesheets=[dbc.themes.DARKLY])
+app = dash.Dash(__name__, external_stylesheets=[dbc.themes.DARKLY])  # Dark theme applied
 
 app.layout = dbc.Container([
     dbc.Row([
@@ -20,38 +20,73 @@ app.layout = dbc.Container([
         dbc.Col([
             dcc.Upload(
                 id='upload-data',
-                children=dbc.Button('Upload YNAB Register', id='upload-button'),
+                children=dbc.Button('Upload YNAB Register', id='upload-button', color="primary", className="mr-1"),
                 style={'width': '100%', 'height': '60px', 'lineHeight': '60px', 'borderWidth': '1px', 'borderStyle': 'dashed', 'borderRadius': '5px', 'textAlign': 'center', 'margin': '10px'},
             ),
-            ])
-        ], align='center', justify='center'),
+        ]),
+    ], align='center', justify='center'),
     dbc.Row([
         dbc.Col([
             dbc.Row([
                 dbc.Col([
-                    dcc.Graph(id='graph1'),
-                ]),
+                    dcc.Graph(id='graph1', style={'height': '400px'}),
+                ], width=6),
                 dbc.Col([
-                    dcc.Graph(id='graph2'),
-                ]),
+                    dcc.Graph(id='graph2', style={'height': '400px'}),
+                ], width=6),
             ]),
             dbc.Row([
                 dbc.Col([
-                    dcc.Graph(id='graph3'),
-                ]),
+                    dcc.Graph(id='graph3', style={'height': '400px'}),
+                ], width=6),
                 dbc.Col([
-                    dcc.Graph(id='graph4'),
-                    ]),
+                    dcc.Graph(id='graph4', style={'height': '400px'}),
+                ], width=6),
             ]),
-        ], width=12, align='center'),
+            dbc.Row([
+                dbc.Col([
+                    dcc.Graph(id='pie-chart', style={'height': '400px'}),
+                ], width=12),
+            ]),
+        ], width=9),
         dbc.Col([
+            dcc.DatePickerRange(
+                id='date-picker-range',
+                start_date_placeholder_text="Start Period",
+                end_date_placeholder_text="End Period",
+                display_format='YYYY-MM',
+                style={
+                    'backgroundColor': '#252525',
+                    'color': 'white',
+                    'padding': '10px',
+                    'borderRadius': '5px',
+                },
+            ),
+            dcc.Dropdown(
+                id='category-dropdown',
+                placeholder="Select Category",
+                style={
+                    'backgroundColor': '#252525',
+                    'color': 'white',
+                    'padding': '10px',
+                    'borderRadius': '5px',
+                },
+            ),
             dash_table.DataTable(
                 id='table',
                 virtualization=True, 
-            )
-        ])
-    ])
-], fluid=True)
+                style_as_list_view=True,
+                style_header={'backgroundColor': '#252525', 'color': 'white'},
+                style_cell={'backgroundColor': '#252525', 'color': 'white'},
+                style_cell_conditional=[
+                    {'if': {'column_id': c},
+                    'textAlign': 'left'}
+                    for c in ['Date', 'Description', 'Category', 'Memo', 'Outflow', 'Inflow', 'Running Balance', 'Account', 'Account Type', 'Flag', 'Category Group/Category', 'Cleared', 'Month-Year', 'Month', 'Net Worth']
+                ],
+            ),
+        ], width=3),
+    ]),
+], fluid=True, style={'backgroundColor': '#252525'})
 
 def parse_contents(contents):
     content_type, content_string = contents.split(',')
@@ -60,12 +95,12 @@ def parse_contents(contents):
     return df
 
 @app.callback(
-    [Output('graph1', 'figure'), Output('graph2', 'figure'), Output('graph3', 'figure'), Output('graph4', 'figure'), Output('table', 'data'), Output('table', 'columns')],
-    [Input('upload-data', 'contents')]
+    [Output('graph1', 'figure'), Output('graph2', 'figure'), Output('graph3', 'figure'), Output('graph4', 'figure'), Output('pie-chart', 'figure'), Output('table', 'data'), Output('table', 'columns'), Output('category-dropdown', 'options')],
+    [Input('upload-data', 'contents'), Input('category-dropdown', 'value'), Input('date-picker-range', 'start_date'), Input('date-picker-range', 'end_date')]
 )
-def update_graphs(contents):
+def update_graphs(contents, selected_category, start_date, end_date):
     if contents is None:
-        return {}, {}, {}, {}, [], []
+        return {}, {}, {}, {}, {}, [], [], []
 
     df = parse_contents(contents)
 
@@ -81,19 +116,31 @@ def update_graphs(contents):
     df['Month'] = df['Date'].dt.month
     df['Net Worth'] = df['Inflow'] - df['Outflow']
 
+    # Filter data based on the selected category and date range
+    if selected_category is not None:
+        df = df[df['Category'] == selected_category]
+    if start_date is not None:
+        df = df[df['Date'] >= start_date]
+    if end_date is not None:
+        df = df[df['Date'] <= end_date]
+
     # Create the figures for your graphs
-    fig1 = px.line(df.groupby('Month-Year')[['Outflow', 'Inflow']].sum().reset_index(), x='Month-Year', y=['Outflow', 'Inflow'], title='Monthly Inflow vs Outflow')
-    fig2 = px.area(df.pivot_table(values='Outflow', index='Month-Year', columns='Category', aggfunc='sum', fill_value=0).reset_index().melt(id_vars='Month-Year'), x='Month-Year', y='value', color='Category', title='Category Spending Over Time')
-    fig3 = px.imshow(df.pivot_table(values='Outflow', index='Month', columns='Category', aggfunc='sum', fill_value=0), title='Seasonal Analysis of Expenses')
+    fig1 = px.line(df.groupby('Month-Year')[['Outflow', 'Inflow']].sum().reset_index(), x='Month-Year', y=['Outflow', 'Inflow'], title='Monthly Inflow vs Outflow', template='plotly_dark')
+    fig2 = px.area(df.pivot_table(values='Outflow', index='Month-Year', columns='Category', aggfunc='sum', fill_value=0).reset_index().melt(id_vars='Month-Year'), x='Month-Year', y='value', color='Category', title='Category Spending Over Time', template='plotly_dark')
+    fig3 = px.imshow(df.pivot_table(values='Outflow', index='Category', columns='Month-Year', aggfunc='sum', fill_value=0), title='Seasonal Analysis of Expenses', template='plotly_dark')
     df['Net Worth'] = df['Inflow'] - df['Outflow']
     net_worth_over_time = df.groupby('Month-Year')['Net Worth'].sum().cumsum()
-    fig4 = px.line(net_worth_over_time.reset_index(), x='Month-Year', y='Net Worth', title='Net Worth Over Time')
+    fig4 = px.line(net_worth_over_time.reset_index(), x='Month-Year', y='Net Worth', title='Net Worth Over Time', template='plotly_dark')
+    fig5 = px.pie(df, values='Outflow', names='Category', title='Expenses Breakdown by Category', template='plotly_dark')
 
     # Prepare data and columns for the DataTable
     data = df.to_dict('records')
     columns = [{"name": i, "id": i} for i in df.columns if i not in ['Flag', 'Category Group/Category', 'Cleared', 'Month-Year', 'Month']]
 
-    return fig1, fig2, fig3, fig4, data, columns
+    # Prepare options for the dropdown menu
+    options = [{'label': category, 'value': category} for category in df['Category'].unique()]
+
+    return fig1, fig2, fig3, fig4, fig5, data, columns, options
 
 if __name__ == '__main__':
     app.run_server(debug=True)
