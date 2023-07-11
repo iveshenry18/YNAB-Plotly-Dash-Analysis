@@ -5,12 +5,15 @@ from dash import dcc, html
 import dash_bootstrap_components as dbc
 from dash.dependencies import Input, Output, State
 from dash import dash_table
+import flask
 import plotly.graph_objects as go
 import plotly.express as px
 import pandas as pd
 import numpy as np
 
-app = dash.Dash(__name__, external_stylesheets=[dbc.themes.DARKLY])  # Dark theme applied
+server = flask.Flask(__name__)
+
+app = dash.Dash(__name__, external_stylesheets=[dbc.themes.DARKLY], server=server)  # Dark theme applied
 
 app.layout = dbc.Container([
     dbc.Row([
